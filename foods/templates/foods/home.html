@@ -1,0 +1,163 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ホーム</title>
+  <style>
+  header {
+  margin-bottom: 20px;
+  font-size: 20px;
+}
+body {
+  font-size: 20px;
+}
+input[type="text"] {
+  
+  margin-top: 40px;
+  margin-bottom: 40px;
+  padding: 12px;
+  font-size: 20px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+}
+.food-list-button {
+  display: block;
+  margin-top: 40px;
+  padding: 10px;
+  text-align: center;
+  background-color: #007bff;
+  color: white;
+  font-size: 20px;
+  width: 100%;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.food-list-button:hover {
+  background-color: #007bff;
+}
+
+  .near-expiry-list {
+    position: fixed;
+    top: 10%;
+    left: 10%;
+    right: 10%;
+    background: white;
+    border: 1px solid #ccc;
+    padding: 20px;
+    z-index: 1000;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  }
+
+  .near-expiry-list table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .near-expiry-list th, .near-expiry-list td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .near-expiry-list th {
+    background-color: #f2f2f2;
+  }
+  </style>
+</head>
+<body>
+
+<header style="display: flex; justify-content: space-between; align-items: center;">
+  <div>今日： {{ today|date:"Y年n月j日" }}</div>
+  <div>{{ weekday }}</div>
+</header>
+
+<h2>ようこそ！</h2>
+
+<p>食品情報</p>
+<input type="text" id="nearExpiryBox" readonly value="読み込み中..." />
+<ul>
+  <li>通知されている食品：<span id="notifiedCount">-</span>品</li>
+  <li>期限切れの食品：<span id="expiredCount">-</span>品</li>
+</ul>
+
+<!-- 遷移ボタン -->
+<a href="{% url 'food_list' %}" class="food-list-button">食品一覧</a>
+<a href="{% url 'food_add' %}" class="food-list-button">食品登録</a>
+<a href="{% url 'recipe_suggestion' %}" class="food-list-button">レシピ提案</a>
+
+<script>
+function updateHomeStats() {
+  fetch("/foods/home_stats/")
+    .then(res => res.json())
+    .then(data => {
+      const near = data.near_expiry;
+      const notified = data.notified;
+      const expired = data.expired;
+
+      document.getElementById("nearExpiryBox").addEventListener("click", function () {
+        showNearExpiryList();
+      });
+
+      document.getElementById("nearExpiryBox").value =
+        near > 0 ? `賞味期限が近い食品があります（${near}）` : "該当する食品はありません";
+
+      document.getElementById("notifiedCount").textContent = notified;
+      document.getElementById("expiredCount").textContent = expired;
+    })
+    .catch(err => {
+      console.error("ホーム統計の取得に失敗:", err);
+    });
+}
+
+// 初回実行
+updateHomeStats();
+function showNearExpiryList() {
+  const today = new Date();
+  const thresholdDays = 3; // 例：3日以内を「近い」と定義
+  const nearFoods = foodList.filter(f => {
+    const expiry = new Date(f.expiration_date);
+    const diffDays = (expiry - today) / (1000 * 60 * 60 * 24);
+    return diffDays >= 0 && diffDays <= thresholdDays;
+  });
+
+  // 表示領域を作成
+  const container = document.createElement("div");
+  container.className = "near-expiry-list";
+
+  const title = document.createElement("h3");
+  title.textContent = "賞味期限が近い食品一覧";
+  container.appendChild(title);
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <tr>
+      <th>食品名</th>
+      <th>賞味期限</th>
+      <th>収納場所</th>
+      <th>残量</th>
+    </tr>
+  `;
+
+  nearFoods.forEach(food => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${food.name}</td>
+      <td>${food.expiration_date}</td>
+      <td>${food.storage_location}</td>
+      <td>${food.quantity}</td>
+    `;
+    table.appendChild(row);
+  });
+
+  container.appendChild(table);
+  document.body.appendChild(container);
+}
+
+</script>
+
+</body>
+</html>
+

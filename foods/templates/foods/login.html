@@ -1,0 +1,142 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ログイン画面</title>
+  <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js"></script>
+<style>
+  body {
+    font-family: sans-serif;
+    padding: 16px;
+    margin: 0;
+    background-color: #f9f9f9;
+  }
+
+  .container {
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  input {
+    display: block;
+    margin-top: 40px;
+    margin-bottom: 40px;
+    padding: 12px;
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #fff;
+  }
+
+  button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px;
+    font-size: 16px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+
+  button:hover {
+    opacity: 0.9;
+  }
+
+  @media screen and (max-width: 414px) {
+    body {
+      padding: 12px;
+      font-size: 20px;
+    }
+
+    input, button {
+      font-size: 16px;
+      padding: 12px;
+    }
+  }
+</style>
+
+
+</head>
+<body>
+  <h2>(アプリケーション名)へ</br>ようこそ！</h2>
+  <h3>メールアドレスとパスワード入力でログイン</h3>
+  <input type="email" id="email" placeholder="メールアドレス" required>
+  <input type="password" id="password" placeholder="パスワード" required>
+  <button id="loginBtn">ログインする</button>
+  <p>アカウントをお持ちでない方は <a href="/foods/signup/">新規登録</a></p>
+
+
+  <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+
+  // Firebase 初期化
+  const firebaseConfig = {
+    apiKey: "AIzaSyAoKK2n6PwmgTLxUfJQTSHxhZ8BwbqAXZI",
+    authDomain: "foods-databases-f7d88.firebaseapp.com",
+    projectId: "foods-databases-f7d88",
+    storageBucket: "foods-databases-f7d88.firebasestorage.app",
+    messagingSenderId: "825369391761",
+    appId: "1:825369391761:web:3a8fcd6049579095eb0530"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+    function getCsrfToken() {
+    const cookies = document.cookie.split("; ");
+    for (let cookie of cookies) {
+      if (cookie.startsWith("csrftoken=")) {
+        return cookie.split("=")[1];
+      }
+    }
+    return "";
+  }
+  
+  // ログイン処理
+  function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+
+    if (!email || !password) {
+      alert("メールアドレスとパスワードを入力してください。");
+      return;
+    }
+
+    signInWithEmailAndPassword(auth, email, password)
+      .then(userCredential => userCredential.user.getIdToken())
+      .then(idToken => {
+        // Djangoにトークンを渡してセッションを作る
+        return fetch("/foods/firebase-login/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken()
+          },
+          body: JSON.stringify({ idToken: idToken })
+        });
+      })
+      .then(res => {
+        if (res.ok) {
+          alert("ログイン成功！");
+          window.location.href = "/foods/home/";
+        } else {
+          alert("Django側のログインに失敗しました");
+        }
+      })
+      .catch(error => {
+        alert("ログイン失敗：" + error.message);
+      });
+  }
+
+  // ボタンにイベントを付与
+  document.getElementById("loginBtn").addEventListener("click", login);
+</script>
+
+</body>
+</html>

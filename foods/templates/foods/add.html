@@ -1,0 +1,272 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>食品登録画面</title>
+  <!--html5 qrcode ライブラリ -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .scan-button, .submit-button, .addbutton {
+      background-color: #007bff; 
+      color: white; 
+      padding: 10px 20px;
+      margin: 10px 0;
+      font-size: 20px; 
+      border: none; 
+      cursor: pointer; 
+      width: 100%;
+    }
+    .scan-button:hover, .submit-button:hover { 
+      opacity: 0.8; 
+    }
+    .food-card { 
+      border: 1px solid #ccc; 
+      padding: 10px; 
+      margin-top: 10px; 
+    }
+    .label {
+       font-weight: bold; 
+       margin-top: 5px; 
+       display: block; 
+      }
+    .input, .select { 
+      width: 100%; 
+      padding: 5px; 
+      margin-bottom: 10px; 
+    }
+    #reader { 
+      width: 300px; 
+      margin: 20px auto; 
+      display: none; 
+    }
+
+    /* モーダル */
+    #modal-mask {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 10;
+    }
+    #modal-window {
+      display: none; position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: white; padding: 20px; border-radius: 8px;
+      z-index: 11; text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<h2>バーコード読み取り</h2>
+<button class="scan-button" onclick="startScanner()">バーコード読み取り</button>
+<p>読み取れない場合はここに記入してね！</p>
+
+<!-- ファイル選択 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<input type="file" id="barcodeImageInput" accept="image/*" onchange="scanWithQuagga()" />
+
+<!-- カメラエリア -->
+<div id="reader"></div>
+
+<h3>読み取り結果表示 <span id="count">1</span>件</h3>
+<div id="food-list"></div>
+<!--食品情報表手動追加-->
+<button type="button"class="addbutton" onclick="addEmptyFood()">+</button>
+<!-- 登録ボタン -->
+<button type="button" class="submit-button" onclick="submitFoods()">登録を完了する</button>
+<input type="hidden" name="foods_json" id="foods-json">
+
+<!-- モーダル表示 -->
+<div id="modal-mask"></div>
+<div id="modal-window">
+  <h3 id="modal-message">登録完了！</h3>
+</div>
+
+<script>
+  const foodList = [{
+    name: '',
+    maker: '',
+    jan_code: '',
+    expiration_date: '',
+    quantity: 1,
+    storage_location: '冷蔵庫'
+  }];
+
+  function addEmptyFood() {
+  foodList.push({
+    name: '',
+    maker: '',
+    jan_code: '',
+    expiration_date: '',
+    quantity: 1,
+    storage_location: '冷蔵庫'
+  });
+  renderFoodList();
+}
+function scanWithQuagga() {
+  const input = document.getElementById("barcodeImageInput");
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    Quagga.decodeSingle({
+      src: e.target.result,
+      numOfWorkers: 0,
+      inputStream: {
+        size: 800
+      },
+      decoder: {
+        readers: ["ean_reader"] // JANコードはEAN-13形式
+      }
+    }, function (result) {
+      if (result && result.codeResult) {
+        const janCode = result.codeResult.code;
+        onScanSuccess(janCode); // 既存処理に渡す
+      } else {
+        alert("画像からバーコードを検出できませんでした");
+      }
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeFood(index) {
+    foodList.splice(index, 1);
+    renderFoodList();
+  }
+  function startScanner() {
+    document.getElementById('reader').style.display = 'block';
+    const html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
+  }
+
+  function onScanSuccess(janCode) {
+    if (!janCode) {
+    alert("JANコードが取得できませんでした。");
+    return;
+  }
+
+  if (foodList.some(f => f.jan_code === janCode)) {
+    alert("この商品はすでに追加されています。");
+    return;
+  }
+
+  fetch('/fetch_product/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jan_code: janCode })
+  })
+  .then(res => res.json())
+  .then(data => {
+    const food = {
+      name: data.name || "（未取得）",
+      maker: data.maker || "",
+      jan_code: janCode,
+      expiration_date: '',
+      quantity: 1,
+      storage_location: '冷蔵庫'
+    };
+    foodList.push(food);
+    renderFoodList();
+  })
+  .catch(error => {
+    console.error("商品情報取得エラー:", error);
+    alert("商品情報の取得に失敗しました。JANコードが正しいか確認してください。");
+  });
+}
+
+  function renderFoodList() {
+    const container = document.getElementById('food-list');
+    container.innerHTML = '';
+    foodList.forEach((food, index) => {
+      container.innerHTML += `
+        <div class="food-card">
+          <button class="delete-button" onclick="removeFood(${index}); renderFoodList();">この食品を削除</button>
+          <label class="label">食品名</label>
+          <input class="input" type="text" value="${food.name}" onchange="updateField(${index}, 'name', this.value)">
+          <label class="label">メーカー</label>
+          <input class="input" type="text" value="${food.maker}" onchange="updateField(${index}, 'maker', this.value)">
+          <label class="label">賞味期限</label>
+          <input class="input" type="date" value="${food.expiration_date}" onchange="updateField(${index}, 'expiration_date', this.value)">
+          <label class="label">数量</label>
+          <input class="input" type="number" value="${food.quantity}" onchange="updateField(${index}, 'quantity', this.value)">
+          <label class="label">収納場所</label>
+          <select class="select" onchange="updateField(${index}, 'storage_location', this.value)">
+            <option value="冷蔵庫" ${food.storage_location === '冷蔵庫' ? 'selected' : ''}>冷蔵庫</option>
+            <option value="備蓄庫" ${food.storage_location === '備蓄庫' ? 'selected' : ''}>備蓄庫</option>
+          </select>
+        </div>
+      `;
+    });
+    document.getElementById('foods-json').value = JSON.stringify(foodList);
+    document.getElementById('count').innerText = foodList.length;
+  }
+
+  function updateField(index, key, value) {
+    foodList[index][key] = value;
+    document.getElementById('foods-json').value = JSON.stringify(foodList);
+  }
+let isSubmitting = false;
+  function submitFoods() {
+  if (isSubmitting) return;
+  isSubmitting = true;
+
+  for (const food of foodList) {
+    if (!food.name || !food.expiration_date) {
+      alert("食品名と賞味期限は必須です。");
+      isSubmitting = false;
+      return;
+    }
+  }
+
+  const payload = `foods_json=${encodeURIComponent(JSON.stringify(foodList))}`;
+
+  fetch('/foods/register_foods/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: payload
+  })
+  .then(res => {
+    if (!res.ok) {
+      throw new Error(`HTTPエラー: ${res.status}`);
+    }
+    return res.json();
+  })
+  .then(data => {
+    if (data.status === 'success') {
+      showModal(`${data.count}件の食品を登録しました！`);
+      foodList.splice(0, foodList.length);
+      renderFoodList();
+      setTimeout(() => {
+        window.location.href = '/foods/home/';
+      }, 1500);
+    } else {
+      alert("登録に失敗しました。もう一度お試しください。");
+    }
+  })
+  .catch(error => {
+    console.error("通信エラー:", error);
+    alert("通信エラーが発生しました。もう一度お試しください。");
+  })
+  .finally(() => {
+    isSubmitting = false;
+  });
+}
+
+
+  function showModal(message) {
+    document.getElementById('modal-message').innerText = message;
+    document.getElementById('modal-mask').style.display = 'block';
+    document.getElementById('modal-window').style.display = 'block';
+    setTimeout(() => {
+      document.getElementById('modal-mask').style.display = 'none';
+      document.getElementById('modal-window').style.display = 'none';
+    }, 3000);
+  }
+
+  // 初期表示
+  renderFoodList();
+</script>
+
+</body>
+</html>

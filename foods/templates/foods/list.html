@@ -1,0 +1,686 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>食品一覧画面</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      font-size: 20px;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 40px;
+      border-bottom: 1px solid #ccc;
+    }
+    .filters {
+      margin: 20px 0;
+    }
+    .food-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+    .food-card {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .consume-button,.detail-button{
+      display: inline-block;
+      margin-top: 8px;
+      padding: 12px 26px;
+      background-color: #f88;
+      color: white;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .card-actions {
+  margin-top: 10px;
+}
+
+.delete-button:hover {
+  background-color: #d32f2f;
+  cursor: pointer;
+}
+
+header input[type="text"] {
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  margin-right: 8px;
+}
+header button {
+  padding: 12px 26px;
+  border-radius: 4px;
+  font-size: 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+
+.hidden {
+  display: none;
+}
+.modal-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 10;
+  pointer-events: none; 
+}
+.modal-window {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  padding: 24px;
+  border-radius: 8px;
+  z-index: 20;
+  width: 320px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  text-align: center;
+  max-width: 500px;
+}
+.modal-window button {
+  padding: 8px 16px;
+  margin: 0 8px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.modal-window button:first-child {
+  background-color: #d32f2f;
+  color: white;
+}
+.modal-window button:last-child {
+  background-color: #ccc;
+}
+
+</style>
+</head>
+<body>
+<header style="display: flex; justify-content: space-between; align-items: center;">
+  <div style="display: flex; align-items: center; gap: 20px;">
+    <!-- 検索フォーム -->
+    <form method="get" action="{% url 'food_list' %}" 
+    style="display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 500px;">
+     <input type="text" name="q" placeholder="食品名で検索" value="{{ request.GET.q }}" 
+     style=" flex: 1;
+      min-width: 150px;
+      padding: 8px;
+      font-size: 20px;
+    " />
+      <button type="submit">検索</button>
+    </form>
+
+    <!-- ホームボタンを検索ボタンと同じスタイルに -->
+    <form action="{% url 'home' %}" method="get">
+      <button type="submit">ホーム</button>
+    </form>
+  </div>
+</header>
+
+<div class="filters" style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px; min-width: 500px;">
+    <select id="storageFilter" onchange="filterFoodsByStorage()">
+      <option value="all">すべて</option>
+      <option value="refrigerator">冷蔵庫</option>
+      <option value="pantry">備蓄庫</option>
+    </select>
+
+    <select name="sort">
+      <option value="expiration_asc">期限（早い）</option>
+      <option value="expiration_desc">期限（遅い）</option>
+      <option value="name">名前順</option>
+    </select>
+
+    <form id="deleteForm" method="post" action="{% url 'food_bulk_delete' %}">
+      {% csrf_token %} 
+      <button type="submit" class="delete-button" onclick="confirmDelete(event)">
+        選択した食品を削除
+      </button>
+
+      <!-- 削除確認モーダル -->
+      <div id="deleteConfirmModal" class="hidden">
+        <div class="modal-mask" onclick="closeDeleteModal()"></div>
+        <div class="modal-window">
+          <h3 style="color: #d32f2f;">※ 本当に削除しますか ※</h3>
+          <p>選択された食品は元に戻せません。</p>
+          <div style="margin-top: 16px;">
+            <button onclick="submitDeleteForm()">はい</button>
+            <button onclick="closeDeleteModal()">いいえ</button>
+          </div>
+        </div>
+      </div>
+
+      <!--削除不可モーダル-->
+      <div id="deleteWarningModal" class="hidden">
+        <div class="modal-mask"></div>
+          <div class="modal-window">
+            <h3 style="color: #d32f2f;">※ 削除できません ※</h3>
+            <p>チェックがついていないので削除できません。</p>
+            <div style="margin-top: 16px;">
+              <button onclick="closeDeleteWarningModal()">閉じる</button>
+            </div>
+          </div>
+      </div>
+  </form>
+</div>
+<!-- 一覧表表示 -->
+<div class="food-grid" id="food-grid"></div>
+
+<!-- 消費モーダル -->
+<div id="consumptionModal" class="hidden">
+  <div class="modal-mask" onclick="closeConsumptionModal()"></div>
+  <div class="modal-window">
+    <h3>食品を消費</h3>
+  <!-- 表示領域 -->
+  <div id="foodInfo">
+    <p><strong>食品名:</strong> <span id="modalFoodName"></span></p>
+    <p>
+      <strong>賞味期限:</strong>
+      <select id="modalExpirationSelect"></select>
+    </p>
+
+    <p><strong>収納場所:</strong> <span id="modalLocation"></span></p>
+    <p>
+    <label for="modalConsumeCount"><strong>消費量:</strong></label>
+    <input type="number" id="modalConsumeCount" name="consume_count" min="1" value="1" style="width:60px;">
+  </p>
+  </div>
+  <!-- 消費日入力 -->
+  <label for="consumedDate">消費日:</label>
+  <input type="date" id="consumedDate" name="consumed_date"></br>
+  <button onclick="recordConsumption()">消費を記録</button>
+  <button type="button" onclick="returnToList()">一覧表に戻る</button>
+	</div>
+</div>
+
+<!-- 詳細表示モーダル -->
+<div id="detailModal" class="hidden">
+  <div class="modal-mask" onclick="closeDetailModal()"></div>
+  <div class="modal-window">
+    <h3>詳細表示</h3>
+
+    <div id="detailView">
+      <p>
+        <strong>食品名:</strong> <span id="detailName"></span><br>
+        <span style="font-size: 0.9em; color: #666;">（登録件数: <span id="detailCount"></span>件）</span>
+      </p>
+
+      <!-- 同一食品の各賞味期限表示 -->
+      <details>
+        <summary>同一食品の各賞味期限 一覧</summary>
+        <ul id="detailHistory">
+          <!-- JavaScriptで他の登録賞味期限を表示 -->
+        </ul>
+      </details>
+
+      <p><strong>賞味期限:</strong> <span id="detailExpiration"></span></p>
+      <p><strong>数量:</strong> <span id="detailQuantity"></span></p>
+      <p><strong>収納場所:</strong> <span id="detailLocation"></span></p>
+      <p><strong>メーカー名:</strong> <span id="detailMaker"></span></p>
+      <p><strong>価格:</strong> ¥<span id="detailPrice"></span></p>
+
+      <button id="editButton" data-id="" onclick="handleEditClick()">編集</button>
+      <button onclick="closeDetailModal()">閉じる</button>
+    </div>
+
+    <!-- 編集モード -->
+    <div id="editView" class="hidden">
+      <h3>編集モード</h3>
+      <label>食品名: <input type="text" id="editName"></label><br>
+      <label>賞味期限: <input type="date" id="editExpiration"></label><br>
+      <label>数量: <input type="number" id="editQuantity"></label><br>
+      <label>収納場所:
+        <select id="editLocation">
+          <option value="冷蔵庫">冷蔵庫</option>
+          <option value="備蓄庫">備蓄庫</option>
+        </select>
+      </label><br>
+      <label>メーカー名: <input type="text" id="editMaker"></label><br>
+      <label>価格: <input type="number" id="editPrice"></label><br>
+
+      <button onclick="saveEdit(foodId)">変更を保存</button>
+      <button onclick="switchToDetailMode()">戻る</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+<input type="hidden" id="recordConsumptionUrl" value="{% url 'record_consumption' %}">
+<input type="hidden" id="csrfToken" value="{{ csrf_token }}">
+
+<div id="completionModal" class="hidden">
+  <div class="modal-mask" onclick="returnToList()"></div>
+  <div class="modal-window">
+    <h3>記録が完了しました！</h3>
+    <button type="button" onclick="returnToList()">一覧に戻る</button>
+  </div>
+</div>
+
+
+</div>
+</div>
+<!-- 編集完了モーダル -->
+<div id="editCompleteModal" class="hidden">
+  <div class="modal-mask" onclick="closeEditCompleteModal()"></div>
+  <div class="modal-window">
+    <h3 style="color: #4CAF50;">変更を保存しました！</h3>
+    <p>編集内容が正常に保存されました。</p>
+    <button onclick="closeEditCompleteModal()">閉じる</button>
+  </div>
+</div>
+
+
+<!--JavaScript-->
+<script>
+  
+  const foodList = JSON.parse('{{ food_list_json|safe }}');
+ 
+  
+  function handleEditClick() {
+  const foodId = document.getElementById('editButton').getAttribute('data-id');
+  switchToEditMode(foodId);
+}
+
+//消費モーダル表示
+function openConsumptionModal(button) {
+  const name = button.getAttribute('data-name');
+
+  // 同じ食品名の食品一覧を取得
+  const matchingFoods = foodList.filter(f => f.name === name);
+
+  // 賞味期限を一意に抽出して昇順に並べる
+  const uniqueExpiries = [...new Set(matchingFoods.map(f => f.expiration_date))]
+    .sort((a, b) => new Date(a) - new Date(b));
+
+  // セレクトを初期化
+  const select = document.getElementById('modalExpirationSelect');
+  select.innerHTML = "";
+
+  uniqueExpiries.forEach((expiry, index) => {
+    const option = document.createElement("option");
+    option.value = expiry;
+    option.textContent = expiry;
+    select.appendChild(option);
+
+    // 最初の賞味期限に対応する数量を max に設定
+    if (index === 0) {
+      const food = matchingFoods.find(f => f.expiration_date === expiry);
+      if (food) {
+        document.getElementById('modalConsumeCount').max = food.quantity;
+      }
+    }
+  });
+
+  document.getElementById('modalFoodName').textContent = name;
+  document.getElementById('modalLocation').textContent = button.getAttribute('data-location');
+
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('consumedDate').value = today;
+
+  document.getElementById('consumptionModal').classList.remove('hidden');
+}
+
+function switchToEditMode(foodId) {
+   const button = document.getElementById('editButton');
+
+  document.getElementById('editName').value = button.dataset.name || '';
+  document.getElementById('editExpiration').value = button.dataset.expiration || '';
+  document.getElementById('editQuantity').value = button.dataset.quantity || 1;
+  document.getElementById('editLocation').value = button.dataset.location || '冷蔵庫';
+  document.getElementById('editMaker').value = button.dataset.maker || '';
+  document.getElementById('editPrice').value = button.dataset.price || '';
+
+  document.getElementById('detailView').classList.add('hidden');
+  document.getElementById('editView').classList.remove('hidden');
+
+  window.foodId = foodId;
+}
+
+
+//収納場所でフィルタリング
+function filterFoodsByStorage() {
+  const selected = document.getElementById('storageFilter').value;
+  const filtered = selected === 'all'
+    ? foodList
+    : foodList.filter(food => food.storage_location === selected);
+  const grouped = groupFoodsByNameAndCode(filtered);
+  renderGroupedList(grouped);
+}
+
+const groupedList = JSON.parse('{{ food_list_json|safe }}');
+renderGroupedList(groupedList);
+
+function renderGroupedList(groupedList) {
+
+  const container = document.getElementById('food-grid');
+  container.innerHTML = '';
+
+  if (groupedList.length === 0) {
+    container.innerHTML = `
+      <div class="food-card">
+        <div>（未登録）</div>
+      </div>
+    `;
+    return;
+  }
+    groupedList.forEach(food => {
+    container.innerHTML += `
+      <div class="food-card">
+        <label>
+          <input type="checkbox" name="selected_foods" value="${food.id}">
+          ${food.name}<br>（登録件数: ${food.count} 件）<br>
+        </label>
+        <div>数量: ${food.quantity}</div>
+        <div class="consume-button"
+            onclick="openConsumptionModal(this)"
+            data-name="${food.name}"
+            data-expiration="${food.expiration_date}"
+            data-location="${food.storage_location}">
+          消費
+        </div>
+        <div class="detail-button"
+            onclick="openDetailModal(this)"
+            data-name="${food.name}"
+            data-expiration="${food.expiration_date}"
+            data-quantity="${food.quantity}"
+            data-location="${food.storage_location}">
+          詳細
+        </div>
+      </div>
+    `;
+  });
+}
+
+window.onload = () => {
+  const grouped = groupFoodsByNameAndCode(foodList);
+  renderGroupedList(grouped);
+};
+
+  function closeConsumptionModal() {
+    document.getElementById('consumptionModal').classList.add('hidden');
+  }
+
+ function recordConsumption() {
+  const consumedDate = document.getElementById("consumedDate").value;
+  const foodName = document.getElementById("modalFoodName").textContent;
+  const expiration = document.getElementById("modalExpirationSelect").value;
+  const count = parseInt(document.getElementById("modalConsumeCount").value);
+
+  if (!consumedDate || !foodName || !expiration || isNaN(count)) {
+    alert("必要な情報が不足しています。");
+    return;
+  }
+
+  const payload = {
+    consumed_items: [{
+      name: foodName,
+      expiry: expiration,
+      count: count
+    }],
+    used_at: consumedDate
+  };
+
+  fetch(document.getElementById("recordConsumptionUrl").value, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": document.getElementById("csrfToken").value
+    },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      closeConsumptionModal();
+      openCompleteModal();
+    } else {
+      alert("保存に失敗しました。");
+    }
+  })
+  .catch(error => {
+    console.error("保存エラー:", error);
+    alert("保存に失敗しました。もう一度お試しください。");
+  });
+}
+function returnToList() {
+window.location.href = "/foods/list/";
+}
+
+function openCompleteModal() {
+  document.getElementById('completionModal').classList.remove('hidden');
+}
+ //食品削除ボタン
+let deleteFormEvent = null;
+
+/**
+ * 削除ボタンがクリックされたときに実行される関数
+ */
+function confirmDelete(event) {
+    event.preventDefault(); // フォーム送信を一時停止
+    
+    // 画面上のすべてのチェックボックス（フォームの外側にあるものも含む）から、
+    // チェックされているものを取得します。
+    const checked = document.querySelectorAll('input[name="selected_foods"]:checked');
+
+    if (checked.length === 0) {
+        // チェックがない場合は警告表示
+        showDeleteWarningModal();
+        return;
+    }
+
+    // チェックがある場合は確認モーダル表示
+    deleteFormEvent = event;
+    document.getElementById('deleteConfirmModal').classList.remove('hidden');
+}
+
+/**
+ * 削除確認モーダルで「はい」が押されたときに実行される関数
+ */
+function submitDeleteForm() {
+    const form = document.getElementById('deleteForm');
+    // 画面上でチェックされている項目を取得
+    const checked = document.querySelectorAll('input[name="selected_foods"]:checked');
+
+    if (checked.length === 0) {
+        // 万が一チェックがない場合は警告表示
+        closeDeleteModal();
+        showDeleteWarningModal();
+        return;
+    }
+    
+    // 1. 以前に追加された可能性のある隠しフィールドを削除して、データをリセットします。
+    form.querySelectorAll('input[name="selected_foods"][type="hidden"]').forEach(el => el.remove());
+
+    // 2. 選択されたチェックボックスの値を、フォームに送信可能な隠しフィールドとして動的に追加します。
+    checked.forEach(box => {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden'; // 送信専用の非表示フィールド
+        hidden.name = 'selected_foods'; // Djangoが受け取る名前と同じにする
+        hidden.value = box.value; // 食品のIDを設定
+        form.appendChild(hidden); // フォームにフィールドを追加
+    });
+
+    console.log("✅ フォームに動的に追加されたID:", Array.from(checked).map(c => c.value));
+    
+    // 3. フォームを送信
+    form.submit();
+    
+    // 4. モーダルを閉じる
+    closeDeleteModal();
+}
+//削除確認モーダル閉じる
+function closeDeleteModal() {
+  document.getElementById('deleteConfirmModal').classList.add('hidden');
+  deleteFormEvent = null;
+}
+
+
+
+
+
+function showDeleteWarningModal() {
+  document.getElementById('deleteWarningModal').classList.remove('hidden');
+}
+
+function closeDeleteWarningModal() {
+  document.getElementById('deleteWarningModal').classList.add('hidden');
+}
+
+//詳細モーダル表示
+function openDetailModal(button) {
+  const name = button.dataset.name;
+  const expiration = button.dataset.expiration;
+  const quantity = button.dataset.quantity;
+  const location = button.dataset.location;
+  const maker = button.dataset.maker || '不明';
+  const price = button.dataset.price || '不明';
+
+  document.getElementById('detailName').innerText = name;
+  document.getElementById('detailExpiration').innerText = expiration;
+  document.getElementById('detailQuantity').innerText = quantity;
+  document.getElementById('detailLocation').innerText = location;
+  document.getElementById('detailMaker').innerText = maker;
+  document.getElementById('detailPrice').innerText = price;
+
+  document.getElementById('detailName').textContent = name;
+
+  // 同一食材を抽出（JANコードがある場合はそれで、なければ名前で）
+  const sameFoods = foodList.filter(food => {
+    return food.jan_code
+      ? food.jan_code === button.dataset.jan_code
+      : food.name === name;
+  });
+  if (sameFoods.length > 0) {
+  const editButton = document.getElementById('editButton');
+  const target = sameFoods[0];
+
+  editButton.dataset.id = target.id;
+  editButton.dataset.name = target.name;
+  editButton.dataset.expiration = target.expiration_date;
+  editButton.dataset.quantity = target.quantity;
+  editButton.dataset.location = target.storage_location;
+  editButton.dataset.maker = target.maker || '';
+  editButton.dataset.price = target.price || '';
+}
+  document.getElementById('detailCount').textContent = sameFoods.length;
+
+  const historyList = document.getElementById('detailHistory');
+  historyList.innerHTML = '';
+
+  // 🔧 賞味期限ごとに数量を合算
+  const grouped = {};
+  sameFoods.forEach(food => {
+    const expiry = food.expiration_date;
+    const quantity = parseInt(food.quantity) || 0;
+
+    if (grouped[expiry]) {
+      grouped[expiry] += quantity;
+    } else {
+      grouped[expiry] = quantity;
+    }
+  });
+
+  // 🔧 昇順で表示（任意）
+  Object.entries(grouped)
+    .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+    .forEach(([expiry, totalQty]) => {
+      const li = document.createElement('li');
+      li.textContent = `賞味期限: ${expiry} ／ 合計数量: ${totalQty}`;
+      historyList.appendChild(li);
+    });
+
+
+  document.getElementById('detailModal').classList.remove('hidden');
+}
+//詳細モーダル閉じる
+  function closeDetailModal() {
+    document.getElementById('detailModal').classList.add('hidden');
+  }
+
+//詳細モード表示（編集→詳細）
+  function switchToDetailMode() {
+    document.getElementById('editView').classList.add('hidden');
+    document.getElementById('detailView').classList.remove('hidden');
+  }
+//編集内容保存
+function saveEdit(foodId) {
+  const formData = new FormData();
+  formData.append('name', document.getElementById('editName').value);
+  formData.append('expiration_date', document.getElementById('editExpiration').value);
+  formData.append('quantity', document.getElementById('editQuantity').value);
+  formData.append('location', document.getElementById('editLocation').value);
+  formData.append('maker', document.getElementById('editMaker').value);
+  formData.append('price', document.getElementById('editPrice').value);
+
+  fetch(`/foods/${foodId}/edit-ajax/`, {
+    method: 'POST',
+    body: formData,
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      switchToDetailMode();
+      document.getElementById('editCompleteModal').classList.remove('hidden');
+    } else {
+      alert("保存に失敗しました");
+      console.log(data.error);
+    }
+  });
+}
+
+//編集完了モーダル閉じる
+function closeEditCompleteModal() {
+  document.getElementById('editCompleteModal').classList.add('hidden');
+}
+//食品をグループ化する
+function groupFoodsByNameAndCode(foodList) {
+  const grouped = {};
+
+  foodList.forEach(food => {
+ // JANコードがあればそれをキーに、なければ名前でまとめる
+    const key = food.jan_code ? `jan_${food.jan_code}` : `name_${food.name}`;    
+    if (!grouped[key]) {
+      grouped[key] = {
+        id:food.id,
+        name: food.name,
+        jan_code: food.jan_code || '',
+        expiration_date: food.expiration_date,
+        quantity: parseInt(food.quantity) || 0,
+        count: 1
+      };
+    } else {
+      grouped[key].quantity += food.quantity;
+      grouped[key].count += 1;
+      // 賞味期限は最も早いものに統一（例）
+      if (food.expiration_date < grouped[key].expiration_date) {
+        grouped[key].expiration_date = food.expiration_date;
+      }
+    }
+  });
+
+  return Object.values(grouped);
+}
+
+</script>
+</body>
+</html>
+

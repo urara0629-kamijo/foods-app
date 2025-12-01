@@ -1,0 +1,72 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <title>通知設定</title>
+  <!-- Firebase v9 互換モード（modularではない） -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+
+</head>
+<body>
+  <h1>通知を有効にする</h1>
+  <button id="enable-notifications">通知を許可</button>
+
+  <script>
+    const firebaseConfig = {
+    apiKey: "AIzaSyAoKK2n6PwmgTLxUfJQTSHxhZ8BwbqAXZI",
+    authDomain: "foods-databases-f7d88.firebaseapp.com",
+    projectId: "foods-databases-f7d88",
+    storageBucket: "foods-databases-f7d88.firebasestorage.app",
+    messagingSenderId: "825369391761",
+    appId: "1:825369391761:web:3a8fcd6049579095eb0530"
+    };
+    firebase.initializeApp(firebaseConfig);
+  const messaging = firebase.messaging();
+
+  // Service Workerを先に登録
+  let swRegistration = null;
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/js/firebase-messaging-sw.js')
+      .then((registration) => {
+        swRegistration = registration;
+        console.log('Service Worker registered');
+      })
+      .catch((err) => {
+        console.error('Service Worker registration failed:', err);
+      });
+  }
+
+  // 通知ボタンの処理
+  document.getElementById('enable-notifications').addEventListener('click', async () => {
+    try {
+      if (!swRegistration) {
+        alert("Service Workerがまだ登録されていません");
+        return;
+      }
+
+      const token = await messaging.getToken({
+        vapidKey: 'BFUV8cbrH3zMdoPK4kaR4dR6Cts5Mh3-EcXdFORmAGP-UtWxICxLYKu5EdtBNi-Sf8zGocrdEa59BR6yW2ofgqc',
+        serviceWorkerRegistration: swRegistration
+      });
+
+      console.log('FCM Token:', token);
+
+      await fetch('/foods/api/save-token/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token,
+          user_id: 1
+        })
+      });
+
+      alert("通知トークンを保存しました！");
+    } catch (err) {
+      console.error('通知トークンの取得に失敗:', err);
+      alert("通知トークンの取得に失敗しました");
+    }
+  });
+  </script>
+</body>
+</html>

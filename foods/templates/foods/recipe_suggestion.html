@@ -1,0 +1,401 @@
+﻿{% load static %}
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>レシピ提案画面</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      font-size: 20px;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    .filters {
+      margin: 20px 0;
+    }
+    button {
+      padding: 12px 26px;
+      border-radius: 4px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+    }
+    .modal-content {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: #fff;
+      border-radius: 8px;
+      z-index: 20;
+      width: 320px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      text-align: center;         
+      padding: 20px;
+      width: 80%;
+      max-width: 500px;
+    }
+    .close {
+      float: right;
+      cursor: pointer;
+    }
+
+  #recipeResults {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 横3列 */
+    gap: 20px;
+    margin-top: 20px;
+  }
+  
+  .recipe-card {
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 6px;
+    background-color: #f9f9f9;
+    text-align: center;
+  }
+
+  .recipe-card img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+  }
+
+  .recipe-card h3 {
+    font-size: 1.1em;
+    margin: 10px 0;
+  }
+
+  .recipe-card button {
+    margin-top: 8px;
+  }
+  .ingredient-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 横3列 */
+  gap: 16px; /* 要素間の余白 */
+  margin-bottom: 20px;
+}
+
+.ingredient-item {
+  border: 1px solid #ccc;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+  </style>
+
+  <!-- Firebase SDK -->  
+   <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-messaging.js"></script>
+
+  <!-- 自作の通知処理 -->
+  <script src="{% static 'js/firebase-messaging.js' %}"></script>
+
+</head>
+<body>
+<div class="recipe-suggestion">
+
+  <form action="{% url 'home' %}" method="get">
+    <button type="submit">ホーム</button>
+  </form>
+  <h2>レシピ提案</h2>
+  
+    <h3>期限が近い食材</h3>
+    <form id="recipeSearchForm" method="POST">
+  {% csrf_token %}
+  <div class="ingredient-list">
+    {% for food in expiring_foods %}
+      <div class="ingredient-item">
+        <label>
+          <input type="checkbox" name="selected_ingredients" value="{{ food.name }}">
+          <span class="foods-name">{{ food.name }}</span><br>
+          <span class="food-expiry">賞味期限：{{ food.expiration_date|date:"Y/m/d" }}</span>
+        </label>
+      </div>
+    {% endfor %}
+  </div>
+  <button type="submit">レシピを検索</button>
+  <button onclick="searchAlternativeRecipes()">ほかのレシピを検索</button>
+</form>
+
+
+  <div id="recipeResults"></div>
+</div>
+
+<!-- レシピ詳細モーダル -->
+<div id="recipeModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeRecipeModal()">&times;</span>
+    <h2 id="modalTitle"></h2>
+    <p><strong>食品URL：</strong><a id="modalFoodUrl" href="#" target="_blank">レシピ詳細を見る</a></p>
+    <p><strong>材料：</strong><span id="modalIngredients"></span></p>
+    <button onclick="useRecipe()">レシピを使用</button>
+  </div>
+</div>
+
+<!-- 消費モーダル -->
+<div id="consumeModal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeConsumeModal()">&times;</span>
+    <h2>食品消費</h2>
+    <p>このレシピを使用して食品を消費しますか？</p>
+
+    <!-- 食材一覧 -->
+    <table id="consumeTable" style="width:100%; margin-bottom: 10px;">
+      <thead>
+        <tr>
+          <th>食材名</th>
+          <th>賞味期限</th>
+          <th>消費数</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- JavaScriptで動的に挿入 -->
+      </tbody>
+    </table>
+  </br>
+    <!-- 消費日入力 -->
+    <label for="consumedDate">消費日:</label>
+    <input type="date" id="consumedDate" name="consumed_date">
+    <button type="button" onclick="recordConsumption()">消費を記録</button>
+  </div>
+</div>
+
+
+<!-- 完了モーダル -->
+<div id="completeModal" class="modal">
+  <div class="modal-content">
+    <h2>消費記録が完了しました！</h2>
+    <button onclick="closeCompleteModal()">OK</button>
+  </div>
+</div>
+
+  <script type="application/json" id="foodInfoJson">
+    {
+      {% for food in expiring_foods %}
+        "{{ food.name }}": {
+          "expiration_date" : "{{ food.expiration_date|date:'Y-m-d' }}",
+          "quantity" : "{{food.quantity}}"
+        }{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    }
+  </script>
+
+<script>
+let currentRecipe = null;
+let selectedFoods = [];
+
+document.getElementById("recipeSearchForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  selectedFoods = Array.from(document.querySelectorAll("input[name='selected_ingredients']:checked"))
+    .map(input => input.value);
+
+  if (selectedFoods.length === 0) {
+    alert("少なくとも1つの食材を選択してください。");
+    return;
+  }
+
+  const container = document.getElementById("recipeResults");
+  container.innerHTML = "";
+
+  try {
+    const res = await fetch("{% url 'fetch_recipes_ajax' %}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": "{{ csrf_token }}"
+      },
+      body: JSON.stringify({ foods: selectedFoods })
+    });
+
+    const data = await res.json();
+
+    data.recipes.slice(0, 6).forEach((recipe, index) => {
+      const card = document.createElement("div");
+      card.classList.add("recipe-card");
+      card.innerHTML = `
+        <img src="${recipe.image}" alt="${recipe.title}" width="150">
+        <h3>${recipe.title}</h3>
+        <button onclick="openRecipeModal('recipe-${index}')">レシピ詳細</button>
+      `;
+
+      const scriptTag = document.createElement("script");
+      scriptTag.type = "application/json";
+      scriptTag.id = `recipe-data-recipe-${index}`;
+      scriptTag.textContent = JSON.stringify(recipe);
+
+      card.appendChild(scriptTag);
+      container.appendChild(card);
+    });
+  } catch (error) {
+    console.error("レシピ取得エラー:", error);
+    alert("レシピの取得に失敗しました。もう一度お試しください。");
+  }
+});
+
+function openRecipeModal(recipeId) {
+  const scriptTag = document.getElementById(`recipe-data-${recipeId}`);
+  if (!scriptTag) {
+    alert('レシピデータが見つかりません。');
+    return;
+  }
+
+  const recipe = JSON.parse(scriptTag.textContent);
+  currentRecipe = recipe;
+
+  document.getElementById('modalTitle').textContent = recipe.title || '不明';
+  document.getElementById('modalFoodUrl').href = recipe.url || '#';
+  document.getElementById('modalIngredients').textContent = Array.isArray(recipe.ingredients)
+    ? recipe.ingredients.join(', ')
+    : recipe.ingredients || '情報なし';
+
+  document.getElementById('recipeModal').style.display = 'block';
+}
+function searchAlternativeRecipes() {
+  const currentTitle=document.getElementById("recipetitle").textContent;
+  
+  fetch('/foods/related_recipes/?exclude=${encodeURIComponent(currentTitle)}')
+    .then(res => res.json())
+    .then(data => {
+    renderAlternativeRecipes(data.recipes);
+  })
+  .catch(error => {
+    console.error("代替レシピ取得エラー:", error);
+    alert("代替レシピの取得に失敗しました。もう一度お試しください。");
+  });
+}
+
+function closeRecipeModal() {
+  document.getElementById('recipeModal').style.display = 'none';
+}
+
+function useRecipe() {
+  closeRecipeModal();
+  document.getElementById('consumeModal').style.display = 'block';
+
+  const tableBody = document.querySelector("#consumeTable tbody");
+  tableBody.innerHTML = "";
+
+  const foodInfoMap = JSON.parse(document.getElementById("foodInfoJson").textContent);
+  const recipeIngredients = currentRecipe.ingredients || [];
+  //チェックされた食材を取得
+  const ckeckedFoods = Array.from(document.querySelectorAll("input[name='selected_ingredients']:checked"))
+    .map(input => input.value);
+
+  // レシピの材料と選択された食材を照合
+  const matchedFoods = recipeIngredients.filter(ingredient => 
+    foodInfoMap.hasOwnProperty(ingredient)
+  );
+
+  selectedFoods = [...new Set([...ckeckedFoods, ...matchedFoods])];
+
+  selectedFoods.forEach((food, index) => {
+    const foodInfo = foodInfoMap[food] || {};
+    const expiration = foodInfo.expiration_date || "不明";
+    const quantity = foodInfo.quantity ?? "不明";
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${food}</td>
+      <td>${expiration}</td>
+      <td>
+        <input type="number" name="consumeCount-${index}" min="0" max="${quantity}" value="1" style="width:60px;">
+        <span style="margin-left:8px; color: #555;">(在庫: ${quantity})</span>
+      </td>
+    `;
+    tableBody.appendChild(row);
+  });
+}
+
+
+function closeConsumeModal() {
+  document.getElementById('consumeModal').style.display = 'none';
+}
+
+function getTodayDate() {
+  const today = new Date();
+  return today.toISOString().split('T')[0]; // "YYYY-MM-DD"
+}
+
+function recordConsumption() {
+  const consumedDate = document.getElementById("consumedDate").value;
+  if (!consumedDate) {
+    alert("消費日を入力してください。");
+    return;
+  }
+
+    const tableRows = document.querySelectorAll("#consumeTable tbody tr");
+    const consumedItems = Array.from(tableRows).map((row, index) => {
+    const name = row.cells[0].textContent;
+    const expiry = row.cells[1].textContent;
+    const count = parseInt(row.querySelector(`input[name='consumeCount-${index}']`).value) || 0;
+    return { name, expiry, count };
+  });
+
+  const payload = {
+    consumed_items: consumedItems,
+    used_at: consumedDate,
+    title: currentRecipe.title,
+    url: currentRecipe.url,
+    ingredients: currentRecipe.ingredients
+  };
+
+  fetch("{% url 'record_consumption' %}", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": "{{ csrf_token }}"
+    },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      closeConsumeModal();
+      openCompleteModal();
+      fetch("/food_list/")
+        .then(res => res.text())
+        .then(html => {
+          document.getElementById("food-grid").innerHTML = html;
+        });
+    } else {
+      alert("保存に失敗しました。");
+    }
+  })
+  .catch(error => {
+    console.error("保存エラー:", error);
+    alert("保存に失敗しました。もう一度お試しください。");
+  });
+}
+
+
+function openCompleteModal() {
+  document.getElementById("completeModal").style.display = "block";
+}
+
+function closeCompleteModal() {
+  document.getElementById("completeModal").style.display = "none";
+}
+</script>
+</body>
+</html>

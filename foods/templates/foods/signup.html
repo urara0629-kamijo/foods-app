@@ -1,0 +1,92 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>新規登録画面</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js"></script>
+  <style>
+    body {
+    font-family: sans-serif;
+    padding: 16px;
+    font-size: 20px;
+    margin: 0;
+    background-color: #f9f9f9;
+  }
+
+  .container {
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  input {
+    display: block;
+    margin-top: 40px;
+    margin-bottom: 40px;
+    padding: 12px;
+    font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #fff;
+  }
+
+  button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px;
+    font-size: 16px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+
+  button:hover {
+    opacity: 0.9;
+  }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>(アプリケーション名)へ</br>ようこそ！</h2>
+    <h3>アカウントの初期登録をしてください</h3>
+    <input type="email" id="email" placeholder="メールアドレス">
+    <input type="password" id="password" placeholder="パスワード">
+    <button onclick="signup()">登録する</button>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+     apiKey: "AIzaSyAoKK2n6PwmgTLxUfJQTSHxhZ8BwbqAXZI",
+      authDomain: "foods-databases-f7d88.firebaseapp.com",
+      projectId: "foods-databases-f7d88",
+      storageBucket: "foods-databases-f7d88.firebasestorage.app",
+      messagingSenderId: "825369391761",
+      appId: "1:825369391761:web:3a8fcd6049579095eb0530"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    function signup() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+        if (!email || !password) {
+        alert("メールアドレスとパスワードを入力してください。");
+        return;
+      }
+
+      firebase.auth().createUserWithEmailAndPassword(email, password)
+        .then(userCredential => {
+          alert("登録が完了しました！");
+          window.location.href = "/foods/home/";
+        })
+        .catch(error => {
+          alert("登録に失敗しました：" + error.message);
+        });
+    }
+  </script>
+</body>
+</html>
