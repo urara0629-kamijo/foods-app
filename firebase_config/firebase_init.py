@@ -1,13 +1,15 @@
-# firebase_config/firebase_init.py
 import firebase_admin
-from firebase_admin import credentials, firestore,messaging
+import os, json
+from firebase_admin import credentials, firestore, messaging
 
-# firebaseサービスアカウントキーのパス()
-cred = credentials.Certificate('firebase_config/serviceAccountKey.json')
+firebase_key_json = os.getenv("FIREBASE_KEY_JSON")
+if not firebase_key_json:
+    raise Exception("FIREBASE_KEY_JSON is not set")
 
-# Firebase初期化（すでに初期化済みか確認）
-if not firebase_admin._apps:
+try:
+    cred_dict = json.loads(firebase_key_json)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
-
-# Firestoreクライアントを取得
-db = firestore.client()
+    db = firestore.client()
+except Exception as e:
+    raise Exception(f"Firebase init failed: {e}")
