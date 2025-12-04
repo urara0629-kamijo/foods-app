@@ -9,7 +9,13 @@ if not firebase_key_json:
 try:
     cred_dict = json.loads(firebase_key_json)
     cred = credentials.Certificate(cred_dict)
-    firebase_admin.initialize_app(cred)
+
+    # すでに初期化済みか確認してから initialize_app を呼ぶ
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(cred)
+
     db = firestore.client()
+
 except Exception as e:
     raise Exception(f"Firebase init failed: {e}")
+

@@ -1,0 +1,11 @@
+[33m56a5918[m[33m ([m[1;36mHEAD[m[33m, [m[1;31morigin/main[m[33m)[m HEAD@{0}: pull origin main --rebase (start): checkout 56a5918a27f9ebc99095bcfb0fd4125a8e278f4d
+[33mef30c99[m[33m ([m[1;32mmain[m[33m)[m HEAD@{1}: commit: commit 2
+[33m88d4464[m HEAD@{2}: commit (amend): commit 1
+[33mb1976cd[m HEAD@{3}: Branch: renamed refs/heads/new-main to refs/heads/main
+[33mb1976cd[m HEAD@{5}: commit (initial): commit 1
+[33m905d685[m HEAD@{6}: checkout: moving from new-main to main
+[33mc2b75c5[m HEAD@{7}: commit (initial): commit 4
+[33m905d685[m HEAD@{8}: commit: commit 3
+[33m3c5a750[m HEAD@{9}: commit: commit 2
+[33mae51834[m HEAD@{10}: Branch: renamed refs/heads/new-main to refs/heads/main
+[33mae51834[m HEAD@{12}: commit (initial): Initial commit (reset history)
